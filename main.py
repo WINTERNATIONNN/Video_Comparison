@@ -18,7 +18,8 @@ def compare_ssim(video_a, video_b):
 
     total_frame = cap_a.get(cv2.CAP_PROP_FRAME_COUNT)
     ssim_score = 0
-    for i in range(1, 11):
+    num_division = 10
+    for i in range(1, num_division+1):
         cap_a.set(1, total_frame/i)
         cap_b.set(1, total_frame/i)
         success, image1 = cap_a.read()
@@ -26,7 +27,7 @@ def compare_ssim(video_a, video_b):
         if success:
             image1, image2 = cv2.resize(image1, (1280, 640)), cv2.resize(image2, (1280, 640))
             ssim_score = ssim_score+ssim(image1, image2, channel_axis=2, data_range=255, multichannel=True)
-    ssim_score = ssim_score/10
+    ssim_score = ssim_score/num_division
     return ssim_score
 
 
@@ -42,7 +43,7 @@ def compare_duration(va, vb):
     duration_1, duration_2 = video_1.get(cv2.CAP_PROP_FRAME_COUNT). video_2.get(cv2.CAP_PROP_FRAME_COUNT)
     video_1.release()
     video_2.release()
-    if duration_1 - duration_2 != 0:
+    if duration_1 - duration_2 > 0.1:
         return False
     else:
         return True
@@ -62,7 +63,8 @@ def video_compare(video_hash1, v_file_list1, video_hash2, v_file_list2):
     same_video_record = []
     for i in range(len(v_file_list1)):
         for j in range(len(v_file_list2)):
-            if (video_hash1[v_file_list1[i]] - video_hash2[v_file_list1[j]]) <= 2 and compare_duration(v_file_list1[i], v_file_list2[j]):
+            if (video_hash1[v_file_list1[i]] - video_hash2[v_file_list1[j]]) <= 2 \
+                    and compare_duration(v_file_list1[i], v_file_list2[j]):
                 ssim_score = compare_ssim(v_file_list1[i], v_file_list2[j])
                 audio_match = audio_compare(v_file_list1[i], v_file_list2[j])
                 if ssim_score > 0.54 and (ssim_score > 0.59 or audio_match):
