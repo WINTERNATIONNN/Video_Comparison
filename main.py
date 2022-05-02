@@ -3,35 +3,31 @@ import pandas as pd
 import cv2
 import librosa
 import argparse
+import errno
+import os
 from skimage.metrics import structural_similarity as ssim
-from moviepy.editor import *
+from moviepy.editor import VideoFileClip, audio
 from mfcc import mfcc
 from correlation import correlate
 from videohash import VideoHash
 
-def compare_ssim(vpath1, vpath2):
-    capA = cv2.VideoCapture(vpath1)
-    capB = cv2.VideoCapture(vpath2)
 
-    t = capA.get(cv2.CAP_PROP_FRAME_COUNT)
-    tssim = 0
-    for i in range(1,11):
-        capA.set(1,t/i)
-        capB.set(1,t/i)
-        success, image1 = capA.read()
-        success, image2 = capB.read()
+def compare_ssim(video_a, video_b):
+    cap_a = cv2.VideoCapture(video_a)
+    cap_b = cv2.VideoCapture(video_b)
+
+    total_frame = cap_a.get(cv2.CAP_PROP_FRAME_COUNT)
+    ssim_score = 0
+    for i in range(1, 11):
+        cap_a.set(1, total_frame/i)
+        cap_b.set(1, total_frame/i)
+        success, image1 = cap_a.read()
+        success, image2 = cap_b.read()
         if success:
-            image1 = cv2.resize(image1, (1280, 640))
-            image2 = cv2.resize(image2, (1280, 640))
-            # image1= cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
-            # image2 = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
-            tssim = tssim+ssim(image1, image2, channel_axis=2, data_range=255, multichannel=True)
-    tssim = tssim/10
-    # print(tssim)
-    # if tssim >50:
-    #     return True
-    # return False
-    return tssim
+            image1, image2 = cv2.resize(image1, (1280, 640)), cv2.resize(image2, (1280, 640))
+            ssim_score = ssim_score+ssim(image1, image2, channel_axis=2, data_range=255, multichannel=True)
+    ssim_score = ssim_score/10
+    return ssim_score
 
 
 def get_hash(video_arr):
@@ -42,41 +38,37 @@ def get_hash(video_arr):
 
 
 def compare_duration(va, vb):
-    video_A = cv2.VideoCapture(va)
-    video_B = cv2.VideoCapture(vb)
-    durationA = video_A.get(cv2.CAP_PROP_FRAME_COUNT)
-    durationB = video_B.get(cv2.CAP_PROP_FRAME_COUNT)
-    # print(durationA)
-    # print(durationB)
-    video_A.release()
-    video_B.release()
-    if durationA - durationB != 0:
+    video_1, video_2 = cv2.VideoCapture(va), cv2.VideoCapture(vb)
+    duration_1, duration_2 = video_1.get(cv2.CAP_PROP_FRAME_COUNT). video_2.get(cv2.CAP_PROP_FRAME_COUNT)
+    video_1.release()
+    video_2.release()
+    if duration_1 - duration_2 != 0:
         return False
     else:
         return True
-def audio_compare(va, vb):
-    video = VideoFileClip(va)
-    video.audio.write_audiofile("va.mp3")
-    video = VideoFileClip(vb)
-    video.audio.write_audiofile("vb.mp3")
-    if librosa.get_duration(filename="va.mp3") < 5 :
-        return mfcc("va.mp3","vb.mp3")
-    else:
-        return mfcc("va.mp3","vb.mp3") and correlate("va.mp3","vb.mp3")
 
-def video_compare(video_dic1, video_arr1, video_dic2, video_arr2):
+
+def audio_compare(va, vb):
+    audio_file_name1, audio_file_name2 = "va.mp3", "vb.mp3"
+    VideoFileClip(va).audio.write_audiofile(audio_file_name1)
+    VideoFileClip(vb).audio.write_audiofile(audio_file_name2)
+    if librosa.get_duration(filename=audio_file_name1) < 5 :
+        return mfcc(audio_file_name1, audio_file_name2)
+    else:
+        return mfcc(audio_file_name1, audio_file_name2) and correlate(audio_file_name1, audio_file_name2)
+
+
+def video_compare(video_hash1, v_file_list1, video_hash2, v_file_list2):
     same_video_record = []
-    for i in range(len(video_arr1)):
-        for j in range(len(video_arr2)):
-            #print(video_arr1[i] + ", " + video_arr2[j])
-            #compare_ssim(video_arr1[i], video_arr2[j])
-            if (video_dic1[video_arr1[i]] - video_dic2[video_arr2[j]]) <= 2 and compare_duration(video_arr1[i],video_arr2[j]):
-                ssim = compare_ssim(video_arr1[i], video_arr2[j])
-                audio_match =audio_compare(video_arr1[i],video_arr2[j])
-                if ssim > 0.54 and (ssim > 0.59 or audio_match):
-                    same_video_record.append([video_arr1[i], video_arr2[j],ssim,audio_match])
-                    video_arr2.pop(j)
-                    j =-1
+    for i in range(len(v_file_list1)):
+        for j in range(len(v_file_list2)):
+            if (video_hash1[v_file_list1[i]] - video_hash2[v_file_list1[j]]) <= 2 and compare_duration(v_file_list1[i], v_file_list2[j]):
+                ssim_score = compare_ssim(v_file_list1[i], v_file_list2[j])
+                audio_match = audio_compare(v_file_list1[i], v_file_list2[j])
+                if ssim_score > 0.54 and (ssim_score > 0.59 or audio_match):
+                    same_video_record.append([v_file_list1[i], v_file_list2[j], ssim_score, audio_match])
+                    v_file_list2.pop(j)
+                    j -= 1
                     break
     return same_video_record
 
@@ -89,18 +81,12 @@ if __name__ == "__main__":
 
     source = args.source_path if args.source_path else None
     target = args.target_path if args.target_path else None
-    if source == None or target == None:
-        raise Exception('No path')
+    if source is None or target is None:
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), source + ", " + target)
 
-    video_arr1 = glob.glob(source+"*.mp4")
-    video_arr2 = glob.glob(target+"*.mp4")
-    video_dic1 = get_hash(video_arr1)
-    video_dic2 = get_hash(video_arr2)
-    # df = pd.DataFrame(video_dic1)
-    # df.to_csv("hashdict" + source+".csv")
-    # df = pd.DataFrame(video_dic2)
-    # df.to_csv("hashdict" + target+".csv")
-    df = pd.DataFrame(video_compare(video_dic1, video_arr1, video_dic2, video_arr2))
+    video_file_list1, video_file_list2 = glob.glob(source + "*.mp4"), glob.glob(target + "*.mp4")
+    hash_video1 = get_hash(video_file_list1)
+    hash_video2 = get_hash(video_file_list2)
+    df = pd.DataFrame(video_compare(hash_video1, video_file_list1, hash_video2, video_file_list2))
     df.to_csv("test.csv")
 
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
