@@ -5,19 +5,20 @@ import librosa
 import argparse
 import errno
 import os
+from typing import List, Dict
 from skimage.metrics import structural_similarity as ssim
-from moviepy.editor import VideoFileClip, audio
+from moviepy.editor import VideoFileClip
 from mfcc import mfcc
 from correlation import correlate
 from videohash import VideoHash
 
 
-def compare_ssim(video_a, video_b):
+def compare_ssim(video_a: str, video_b: str) -> float:
     cap_a = cv2.VideoCapture(video_a)
     cap_b = cv2.VideoCapture(video_b)
 
     total_frame = cap_a.get(cv2.CAP_PROP_FRAME_COUNT)
-    ssim_score = 0
+    ssim_score = 0.0
     num_division = 10
     for i in range(1, num_division+1):
         cap_a.set(1, total_frame/i)
@@ -31,14 +32,14 @@ def compare_ssim(video_a, video_b):
     return ssim_score
 
 
-def get_hash(video_arr):
-    video_dic = {}
-    for tem in video_arr:
-        video_dic[tem] = VideoHash(tem)
-    return video_dic
+def get_hash(video_file_list: List[str]) -> Dict[str, VideoHash]:
+    video_hash = {}
+    for tem in video_file_list:
+        video_hash[tem] = VideoHash(tem)
+    return video_hash
 
 
-def compare_duration(va, vb):
+def compare_duration(va: str, vb: str) -> bool:
     video_1, video_2 = cv2.VideoCapture(va), cv2.VideoCapture(vb)
     duration_1, duration_2 = video_1.get(cv2.CAP_PROP_FRAME_COUNT). video_2.get(cv2.CAP_PROP_FRAME_COUNT)
     video_1.release()
@@ -49,17 +50,18 @@ def compare_duration(va, vb):
         return True
 
 
-def audio_compare(va, vb):
+def audio_compare(va: str, vb: str) -> bool:
     audio_file_name1, audio_file_name2 = "va.mp3", "vb.mp3"
     VideoFileClip(va).audio.write_audiofile(audio_file_name1)
     VideoFileClip(vb).audio.write_audiofile(audio_file_name2)
-    if librosa.get_duration(filename=audio_file_name1) < 5 :
+    if librosa.get_duration(filename=audio_file_name1) < 5:
         return mfcc(audio_file_name1, audio_file_name2)
     else:
         return mfcc(audio_file_name1, audio_file_name2) and correlate(audio_file_name1, audio_file_name2)
 
 
-def video_compare(video_hash1, v_file_list1, video_hash2, v_file_list2):
+def video_compare(video_hash1: Dict[str, VideoHash], v_file_list1: List[str], video_hash2: Dict[str, VideoHash],
+                  v_file_list2: List[str]) -> List[List]:
     same_video_record = []
     for i in range(len(v_file_list1)):
         for j in range(len(v_file_list2)):
@@ -84,11 +86,10 @@ if __name__ == "__main__":
     source = args.source_path if args.source_path else None
     target = args.target_path if args.target_path else None
     if source is None or target is None:
-        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), source + ", " + target)
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT))
 
     video_file_list1, video_file_list2 = glob.glob(source + "*.mp4"), glob.glob(target + "*.mp4")
     hash_video1 = get_hash(video_file_list1)
     hash_video2 = get_hash(video_file_list2)
     df = pd.DataFrame(video_compare(hash_video1, video_file_list1, hash_video2, video_file_list2))
     df.to_csv("test.csv")
-
